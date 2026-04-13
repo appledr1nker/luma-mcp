@@ -590,10 +590,9 @@ app.use(express.json());
 app.get("/", (req, res) => res.json({ name: "luma-mcp", version: "1.0.0" }));
 
 app.post("/mcp", async (req, res) => {
-  const auth = req.headers.authorization;
-  const apiKey = auth?.startsWith("Bearer ") ? auth.slice(7) : null;
+  const apiKey = req.headers["x-api-key"] ?? null;
   if (!apiKey) {
-    return res.status(401).json({ error: "Authorization: Bearer <LUMA_API_KEY> required" });
+    return res.status(401).json({ error: "x-api-key header with your Luma API key is required" });
   }
 
   try {
