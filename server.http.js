@@ -199,6 +199,7 @@ server.tool("list_events", "List calendar events (trimmed)", {
 server.tool("get_event", "Get details about a specific event", {
   api_id: z.string(),
 }, async ({ api_id }, extra) => {
+  console.log("[debug] extra.requestInfo:", JSON.stringify(extra?.requestInfo ?? null));
   const k = getKey(extra);
   return { content: [{ type: "text", text: JSON.stringify(trimEvent(await luma(k, "/v1/event/get", { api_id })), null, 2) }] };
 });
