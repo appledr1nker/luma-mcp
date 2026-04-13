@@ -156,9 +156,12 @@ async function fetchAllGuests(apiKey, event_id) {
   return guests;
 }
 
-// ─── MCP server ───────────────────────────────────────────────────────────────
+// ─── MCP server factory ───────────────────────────────────────────────────────
+// McpServer can only be connected to one transport at a time, so we create a
+// fresh instance per request (stateless HTTP pattern per the MCP SDK docs).
 
-const server = new McpServer({ name: "luma", version: "1.0.0" });
+function createServer() {
+  const server = new McpServer({ name: "luma", version: "1.0.0" });
 
 server.tool("get_self", "Get authenticated user info", {}, async (p, extra) => {
   const k = getKey(extra);
@@ -527,6 +530,9 @@ server.tool("marketing_dashboard", "High-level marketing overview: subscriber to
   };
 });
 
+  return server;
+}
+
 // ─── HTTP layer ───────────────────────────────────────────────────────────────
 
 const app = express();
@@ -535,12 +541,19 @@ app.use(express.json());
 app.get("/", (req, res) => res.json({ name: "luma-mcp", version: "1.0.0" }));
 
 app.post("/mcp", async (req, res) => {
+  const server = createServer();
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   try {
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
+    res.on("finish", async () => {
+      await transport.close();
+      await server.close();
+    });
   } catch (err) {
     console.error(err);
+    await transport.close();
+    await server.close();
     if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
   }
 });
