@@ -15,14 +15,12 @@ async function luma(apiKey, path, params = {}) {
   return res.json();
 }
 
-// Extract the caller's Luma API key from MCP request context.
-// Alpic forwards request headers through the MCP protocol layer — they show up
-// in extra.requestInfo.headers, not as raw HTTP headers on the Express request.
-function getKey(extra) {
-  const key = extra?.requestInfo?.headers?.["x-api-key"];
-  if (!key) throw new Error("Pass your Luma API key via the x-api-key header");
-  return key;
-}
+// Alpic strips custom headers before forwarding to the internal process,
+// so the API key must be set as an environment variable on the deployment.
+const API_KEY = process.env.LUMA_API_KEY;
+if (!API_KEY) throw new Error("LUMA_API_KEY environment variable is required");
+
+function getKey() { return API_KEY; }
 
 // ─── Field trimmers ───────────────────────────────────────────────────────────
 
@@ -163,15 +161,15 @@ async function fetchAllGuests(apiKey, event_id) {
 function createServer() {
   const server = new McpServer({ name: "luma", version: "1.0.0" });
 
-server.tool("get_self", "Get authenticated user info", {}, async (p, extra) => {
-  const k = getKey(extra);
+server.tool("get_self", "Get authenticated user info", {}, async (p) => {
+  const k = getKey();
   return { content: [{ type: "text", text: JSON.stringify(await luma(k, "/v1/user/get-self"), null, 2) }] };
 });
 
 server.tool("get_calendar", "Get calendar details", {
   api_id: z.string().optional(),
-}, async (p, extra) => {
-  const k = getKey(extra);
+}, async (p) => {
+  const k = getKey();
   return { content: [{ type: "text", text: JSON.stringify(await luma(k, "/v1/calendar/get", p), null, 2) }] };
 });
 
@@ -181,8 +179,8 @@ server.tool("list_events", "List calendar events (trimmed)", {
   before: z.string().optional().describe("ISO 8601"),
   pagination_cursor: z.string().optional(),
   pagination_limit: z.number().optional(),
-}, async (p, extra) => {
-  const k = getKey(extra);
+}, async (p) => {
+  const k = getKey();
   const res = await luma(k, "/v1/calendar/list-events", p);
   return {
     content: [{
@@ -198,9 +196,8 @@ server.tool("list_events", "List calendar events (trimmed)", {
 
 server.tool("get_event", "Get details about a specific event", {
   api_id: z.string(),
-}, async ({ api_id }, extra) => {
-  console.log("[debug] extra.requestInfo:", JSON.stringify(extra?.requestInfo ?? null));
-  const k = getKey(extra);
+}, async ({ api_id }) => {
+  const k = getKey();
   return { content: [{ type: "text", text: JSON.stringify(trimEvent(await luma(k, "/v1/event/get", { api_id })), null, 2) }] };
 });
 
@@ -212,8 +209,8 @@ server.tool("list_people", "List people in a calendar (trimmed)", {
   pagination_limit: z.number().optional(),
   sort_column: z.enum(["created_at", "event_checked_in_count", "event_approved_count", "name", "revenue_usd_cents"]).optional(),
   sort_direction: z.enum(["asc", "desc", "asc nulls last", "desc nulls last"]).optional(),
-}, async (p, extra) => {
-  const k = getKey(extra);
+}, async (p) => {
+  const k = getKey();
   const res = await luma(k, "/v1/calendar/list-people", p);
   return {
     content: [{
@@ -231,8 +228,8 @@ server.tool("get_guests", "List guests for an event (trimmed)", {
   event_api_id: z.string(),
   pagination_cursor: z.string().optional(),
   pagination_limit: z.number().optional(),
-}, async (p, extra) => {
-  const k = getKey(extra);
+}, async (p) => {
+  const k = getKey();
   const res = await luma(k, "/v1/event/get-guests", p);
   return {
     content: [{
@@ -249,23 +246,23 @@ server.tool("get_guests", "List guests for an event (trimmed)", {
 server.tool("get_guest", "Get a specific guest", {
   event_api_id: z.string(),
   email: z.string().optional(),
-}, async (p, extra) => {
-  const k = getKey(extra);
+}, async (p) => {
+  const k = getKey();
   return { content: [{ type: "text", text: JSON.stringify(trimGuest(await luma(k, "/v1/event/get-guest", p)), null, 2) }] };
 });
 
 server.tool("list_ticket_types", "List ticket types for an event", {
   event_api_id: z.string(),
-}, async (p, extra) => {
-  const k = getKey(extra);
+}, async (p) => {
+  const k = getKey();
   return { content: [{ type: "text", text: JSON.stringify(await luma(k, "/v1/event/ticket-types/list", p), null, 2) }] };
 });
 
 server.tool("list_coupons", "List coupons for an event or calendar", {
   event_api_id: z.string().optional(),
   calendar_api_id: z.string().optional(),
-}, async ({ event_api_id, calendar_api_id }, extra) => {
-  const k = getKey(extra);
+}, async ({ event_api_id, calendar_api_id }) => {
+  const k = getKey();
   const path = event_api_id ? "/v1/event/coupons" : "/v1/calendar/coupons";
   const params = event_api_id ? { event_api_id } : { calendar_api_id };
   return { content: [{ type: "text", text: JSON.stringify(await luma(k, path, params), null, 2) }] };
@@ -275,8 +272,8 @@ server.tool("list_org_events", "List events across all org calendars", {
   organization_api_id: z.string().optional(),
   after: z.string().optional(),
   before: z.string().optional(),
-}, async (p, extra) => {
-  const k = getKey(extra);
+}, async (p) => {
+  const k = getKey();
   return { content: [{ type: "text", text: JSON.stringify(await luma(k, "/v1/organizations/events/list", p), null, 2) }] };
 });
 
@@ -286,8 +283,8 @@ server.tool("get_subscribers_over_time", "Cumulative subscriber growth as a time
   calendar_api_id: z.string().optional(),
   created_before: z.string().optional().describe("Stop at this date (ISO 8601)"),
   bucket: z.enum(["day", "week", "month"]).optional().default("month"),
-}, async ({ calendar_api_id, created_before, bucket }, extra) => {
-  const k = getKey(extra);
+}, async ({ calendar_api_id, created_before, bucket }) => {
+  const k = getKey();
   const people = await fetchAllPeople(k, { calendar_api_id, cutoff: created_before });
   const series = buildCumulativeSeries(people.map(p => p.created_at), bucket);
   return { content: [{ type: "text", text: JSON.stringify({ total: people.length, bucket, series }, null, 2) }] };
@@ -299,8 +296,8 @@ server.tool("get_events_over_time", "Event volume trend as a cumulative time ser
   before: z.string().optional().describe("ISO 8601"),
   bucket: z.enum(["day", "week", "month"]).optional().default("month"),
   date_field: z.enum(["start_at", "created_at"]).optional().default("start_at").describe("Bucket by event start date or creation date"),
-}, async ({ calendar_api_id, after, before, bucket, date_field }, extra) => {
-  const k = getKey(extra);
+}, async ({ calendar_api_id, after, before, bucket, date_field }) => {
+  const k = getKey();
   const events = await fetchAllEvents(k, { calendar_api_id, after, before });
   const dates = events.map(e => (e.event ?? e)[date_field]).filter(Boolean);
   const series = buildCumulativeSeries(dates, bucket);
@@ -310,8 +307,8 @@ server.tool("get_events_over_time", "Event volume trend as a cumulative time ser
 server.tool("get_revenue_over_time", "Cumulative revenue from subscribers over time, bucketed by subscriber join date.", {
   calendar_api_id: z.string().optional(),
   bucket: z.enum(["day", "week", "month"]).optional().default("month"),
-}, async ({ calendar_api_id, bucket }, extra) => {
-  const k = getKey(extra);
+}, async ({ calendar_api_id, bucket }) => {
+  const k = getKey();
   const people = await fetchAllPeople(k, { calendar_api_id });
 
   const byBucket = {};
@@ -356,8 +353,8 @@ server.tool("get_attendance_over_time", "Registrations and check-ins per time bu
   before: z.string().optional().describe("ISO 8601"),
   max_events: z.number().optional().default(50).describe("Max events to process (default 50)"),
   bucket: z.enum(["day", "week", "month"]).optional().default("month"),
-}, async ({ calendar_api_id, after, before, max_events, bucket }, extra) => {
-  const k = getKey(extra);
+}, async ({ calendar_api_id, after, before, max_events, bucket }) => {
+  const k = getKey();
   const allEvents = await fetchAllEvents(k, { calendar_api_id, after, before });
   const events = allEvents.slice(0, max_events);
 
@@ -393,8 +390,8 @@ server.tool("get_attendance_over_time", "Registrations and check-ins per time bu
 
 server.tool("get_event_summary", "Full performance summary for one event: attendance, show rate, UTM source breakdown.", {
   event_api_id: z.string(),
-}, async ({ event_api_id }, extra) => {
-  const k = getKey(extra);
+}, async ({ event_api_id }) => {
+  const k = getKey();
   const [eventRes, guests] = await Promise.all([
     luma(k, "/v1/event/get", { api_id: event_api_id }),
     fetchAllGuests(k, event_api_id),
@@ -434,8 +431,8 @@ server.tool("list_events_with_stats", "Recent events enriched with registration 
   after: z.string().optional().describe("ISO 8601"),
   before: z.string().optional().describe("ISO 8601"),
   limit: z.number().optional().default(20).describe("Max events to enrich (default 20)"),
-}, async ({ calendar_api_id, after, before, limit }, extra) => {
-  const k = getKey(extra);
+}, async ({ calendar_api_id, after, before, limit }) => {
+  const k = getKey();
   const allEvents = await fetchAllEvents(k, { calendar_api_id, after, before });
   const events = allEvents.slice(0, limit);
 
@@ -456,8 +453,8 @@ server.tool("list_events_with_stats", "Recent events enriched with registration 
 
 server.tool("get_subscriber_breakdown", "Subscribers grouped by tag — understand your audience segments.", {
   calendar_api_id: z.string().optional(),
-}, async ({ calendar_api_id }, extra) => {
-  const k = getKey(extra);
+}, async ({ calendar_api_id }) => {
+  const k = getKey();
   const people = await fetchAllPeople(k, { calendar_api_id });
 
   const byTag = {};
@@ -477,8 +474,8 @@ server.tool("get_repeat_attendees", "Subscribers who attended more than one even
   calendar_api_id: z.string().optional(),
   min_events: z.number().optional().default(2).describe("Minimum check-ins (default 2)"),
   limit: z.number().optional().default(50),
-}, async ({ calendar_api_id, min_events, limit }, extra) => {
-  const k = getKey(extra);
+}, async ({ calendar_api_id, min_events, limit }) => {
+  const k = getKey();
   const people = await fetchAllPeople(k, { calendar_api_id });
   const qualified = people.filter(p => (p.event_checked_in_count ?? 0) >= min_events);
   const top = qualified.sort((a, b) => (b.event_checked_in_count ?? 0) - (a.event_checked_in_count ?? 0)).slice(0, limit).map(trimPerson);
@@ -500,8 +497,8 @@ server.tool("get_repeat_attendees", "Subscribers who attended more than one even
 
 server.tool("marketing_dashboard", "High-level marketing overview: subscriber totals, MoM growth, event counts, revenue. Single call.", {
   calendar_api_id: z.string().optional(),
-}, async ({ calendar_api_id }, extra) => {
-  const k = getKey(extra);
+}, async ({ calendar_api_id }) => {
+  const k = getKey();
   const [people, events] = await Promise.all([
     fetchAllPeople(k, { calendar_api_id }),
     fetchAllEvents(k, { calendar_api_id }),
