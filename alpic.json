@@ -2,5 +2,5 @@
   "$schema": "https://assets.alpic.ai/alpic.json",
   "buildCommand": "echo 'no build step'",
   "buildOutputDir": ".",
-  "startCommand": "npm run --silent start"
+  "startCommand": "node server.stdio.js"
 }
