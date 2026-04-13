@@ -1,0 +1,14 @@
+{
+  "name": "luma-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.http.js",
+    "start:stdio": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "express": "^5.1.0",
+    "zod": "latest"
+  }
+}
